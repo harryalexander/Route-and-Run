@@ -10,96 +10,63 @@ import Foundation
 import MapKit
 
 class RouteCreationViewModel: NSObject {
-    var startingWaypoint: CLLocationCoordinate2D? {
-        guard let waypoint = tappedWaypoints.first else {
-            return nil
-        }
-        return waypoint
+    var lastPoint: CLLocationCoordinate2D? {
+        return segments.last?.destination ?? source?.placemark.coordinate
     }
-
-    var tappedWaypoints: [CLLocationCoordinate2D] = []
-    var hasTappedWaypoints: Bool {
-        return !tappedWaypoints.isEmpty
-    }
-    let mapsService: MapRequester = MapsServiceController()
-    let view: RouteCreationViewLayer
-    var searchResults: [MKPlacemark] = []
-    var isFetchingRouteSection = false
+    let mapAPI: MapAPI
+    var routeName: String?
+    var source: MKMapItem?
+    var segments: [RouteSegment] = []
     
-    var pendingSegment: SegmentTerminal? {
-        didSet {
-            guard let pendingSegment = self.pendingSegment else {
-                view.erasePendingWaypointAnnotation()
-                return
-            }
-            guard let destination = pendingSegment.destination else {
-                view.renderRouteSourceAnnotation(placemark: pendingSegment.source)
-                return
-            }
-            fetchRouteSegment(source: pendingSegment.source, destination: destination)
-            
-//            if let pendingWaypoint = self.pendingSegment, !routeSegments.isEmpty {
-//                view.renderPendingWaypointAnnotation(placemark: pendingWaypoint)
-//                fetchRouteSegment()
-//            } else {
-//                view.erasePendingWaypointAnnotation()
-//            }
-        }
-        
-    }
-    var routeSegments: [RouteSegment] = []
+    let view: RouteCreationViewLayer
     
     init(view: RouteCreationViewLayer) {
+        self.mapAPI = AppleMapsService()
         self.view = view
         super.init()
     }
     
-    func undoLastRouteSegment() {
-        if routeSegments.isEmpty {
-            view.eraseRouteSourceAnnotation()
-            view.setIsUndoButtonEnabled(isEnabled: false)
-        } else {
-            routeSegments.removeLast()
-            view.eraseRouteSegmentWith(index: routeSegments.count)
-            view.setIsUndoButtonEnabled(isEnabled: true)
+    func removeRoutePoint() {
+        guard !segments.isEmpty else {
+            source = nil
+            view.refresh()
+            return
         }
+        segments.removeAll()
+        view.refresh()
     }
     
-    func fetchRouteSegment(source: MKPlacemark, destination: MKPlacemark) {
-        mapsService
-            .getDirectionsFrom(source: source.coordinate,
-                               destination: destination.coordinate) { (route, error) in
-            guard error == nil, let route = route else {
-                self.view.renderRouteSegmentNetworkingError(error: error!, forDestination: destination.coordinate)
+    func requestRouteTo(destination: CLLocationCoordinate2D) {
+        guard let source = lastPoint else {
+            return
+        }
+        mapAPI.requestRouteFromSource(source, toDestination: destination) { (result) in
+            switch result {
+            case .success(let route):
+                let segment = RouteSegment(source: source, destination: destination, route: route)
+                self.segments.append(segment)
+                self.view.refresh()
+            case .failure(_):
                 return
             }
-                                let segment = RouteSegment(source: source.coordinate, destination: destination.coordinate, route: route)
-            self.routeSegments.append(segment)
-            self.view.renderRouteSegment(segment: segment, withIndex: self.routeSegments.count - 1)
         }
     }
     
-    func sendSearchRequest(query: String) {
-        mapsService.search(query: query) { (response, error) in
-            guard error == nil, let response = response else {
-                return
-            }
-            self.searchResults = response.mapItems.map { $0.placemark }
-            self.view.renderSearchResults(results: self.searchResults)
+    func saveRoute() {
+        guard let name = routeName, !segments.isEmpty else {
+            return
         }
-    }
-    
-    func searchResultDescription(result: MKPlacemark) -> String {
-        return result.title ?? ""
-    }
-    
-    func pushRoutePoint(placemark: MKPlacemark) {
-        if routeSegments.isEmpty, let _ = pendingSegment {
-            self.pendingSegment?.destination = placemark
-        } else if routeSegments.isEmpty, pendingSegment == nil {
-            self.pendingSegment = SegmentTerminal(source: placemark)
-        } else if !routeSegments.isEmpty, let source = routeSegments.last?.destination {
-            self.pendingSegment = SegmentTerminal(source: MKPlacemark(coordinate: source), destination: placemark)
-        }
+        let route = Route(name: name, segments: segments, timeCreated: Date())
+//        let encoder = JSONEncoder()
+//        guard let routeData = try? encoder.encode(route) else {
+//            return
+//        }
+        let routeData = try? NSKeyedArchiver.archivedData(withRootObject: route, requiringSecureCoding: true)
+        let url = FileManager()
+            .urls(for: .documentDirectory,
+                  in: .userDomainMask)
+            .first!
+            .appendingPathComponent("route")
+        try! routeData?.write(to: url)
     }
 }

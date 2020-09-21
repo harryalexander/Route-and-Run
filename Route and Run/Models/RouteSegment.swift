@@ -9,25 +9,55 @@
 import Foundation
 import MapKit
 
-struct RouteSegment {
-    let name: String
+struct RouteSegment: Codable {
+    enum CodingKeys: String, CodingKey {
+        case name
+        case distance
+        case source
+        case destination
+    }
     let distance: CLLocationDistance
     let source: CLLocationCoordinate2D
     let destination: CLLocationCoordinate2D
-    let polyline: MKPolyline
-    let directions: [Direction]
+    let polyline: MKPolyline?
     
     init(source: CLLocationCoordinate2D, destination: CLLocationCoordinate2D, route: MKRoute) {
-        self.name = route.name
         self.distance = route.distance
         self.source = source
         self.destination = destination
         self.polyline = route.polyline
-        self.directions = route.steps.map { Direction(instructions: $0.instructions, warnings: $0.notice) }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(distance, forKey: .distance)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(destination, forKey: .destination)
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        distance = try container.decode(CLLocationDistance.self, forKey: .distance)
+        source = try container.decode(CLLocationCoordinate2D.self, forKey: .source)
+        destination = try container.decode(CLLocationCoordinate2D.self, forKey: .destination)
+        polyline = nil
     }
 }
 
-struct Direction {
-    let instructions: String
-    let warnings: String?
+extension CLLocationCoordinate2D: Codable {
+    enum CodingKeys: String, CodingKey {
+        case latitude, longtitude
+    }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(latitude, forKey: .latitude)
+        try container.encode(longitude, forKey: .longtitude)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        latitude = try container.decode(CLLocationDegrees.self, forKey: .latitude)
+        longitude = try container.decode(CLLocationDegrees.self, forKey: .longtitude)
+    }
 }

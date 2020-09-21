@@ -9,8 +9,10 @@
 import Foundation
 import MapKit
 
-class MapsServiceController: NSObject, MapRequester {
-    func getDirectionsFrom(source: CLLocationCoordinate2D, destination: CLLocationCoordinate2D, onResponse: @escaping (MKRoute?, Error?) -> Void) {
+class AppleMapsService: NSObject {}
+
+extension AppleMapsService: MapAPI {
+    func requestRouteFromSource(_ source: CLLocationCoordinate2D, toDestination destination: CLLocationCoordinate2D, onCompletion: @escaping (RouteRequestResult) -> Void) {
         let request = MKDirections.Request()
         request.transportType = .walking
         request.source = source.convertToMapItem()
@@ -18,21 +20,32 @@ class MapsServiceController: NSObject, MapRequester {
         
         let directions = MKDirections(request: request)
         directions.calculate { (response, error) in
-            guard error == nil else {
-                onResponse(nil, error)
+            guard error == nil, let route = response?.routes.first else {
+                let result = RouteRequestResult.failure(error!)
+                onCompletion(result)
                 return
             }
-            onResponse(response?.routes.first, nil)
+            let result = RouteRequestResult.success(route)
+            onCompletion(result)
         }
     }
     
-    func search(query: String, onResponse: @escaping (MKLocalSearch.Response?, Error?) -> Void) {
+    func sendSearchRequestFor(query: String,
+                              onCompletion: @escaping (LocationSearchResult) -> Void) {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         
         let search = MKLocalSearch(request: request)
         search.start { (response, error) in
-            onResponse(response, error)
+            guard error == nil, let results = response?.mapItems else {
+                onCompletion(LocationSearchResult.failure(error!))
+                return
+            }
+            onCompletion(LocationSearchResult.success(results))
         }
     }
+    
+    //    func requestRouteFromSource(_ source: CLLocationCoordinate2D, toDestination destination: CLLocationCoordinate2D) {
+
+    //    }
 }
