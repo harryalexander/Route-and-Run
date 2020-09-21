@@ -44,8 +44,4 @@ extension AppleMapsService: MapAPI {
             onCompletion(LocationSearchResult.success(results))
         }
     }
-    
-    //    func requestRouteFromSource(_ source: CLLocationCoordinate2D, toDestination destination: CLLocationCoordinate2D) {
-
-    //    }
 }
